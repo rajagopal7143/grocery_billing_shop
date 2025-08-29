@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Invoice</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f6fcfa;
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+    .invoice-container {
+      margin: 18px auto;
+      background: white;
+      border-radius: 16px;
+      width: 98%;
+      max-width: 580px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.10);
+      padding: 20px 15px 12px 15px;
+      color: #222;
+    }
+    h1 {
+      color: #218838;
+      margin-bottom: 12px;
+      margin-top: 0;
+      text-align: center;
+      letter-spacing: 0.04em;
+      font-weight: 700;
+      font-size: 1.7em;
+    }
+    .shop-info,
+    .invoice-meta,
+    .customer-info,
+    .total-table,
+    .invoice-actions {
+      margin-bottom: 12px;
+    }
+    .shop-info {
+      font-size: 0.98em;
+      color: #474747;
+      margin-bottom: 2px;
+    }
+    .invoice-meta {
+      text-align: right;
+      font-size: 0.92em;
+      color: #555;
+    }
+    .customer-info strong {
+      color: #218838;
+      display: block;
+      margin-bottom: 5px;
+      font-size: 1.05em;
+      font-weight: 600;
+    }
+    .customer-info span {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 0.91em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      border-bottom: 1px solid #e7e7e7;
+      padding: 5px 8px;
+      font-size: 0.98em;
+      text-align: left;
+    }
+    th {
+      background: #218838;
+      color: white;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    .total-table td {
+      font-weight: 700;
+      font-size: 1.05em;
+      padding-top: 6px;
+    }
+    .total-table .grandtotal {
+      color: #218838;
+      font-size: 1.15em;
+    }
+    .invoice-actions {
+      text-align: center;
+      margin-top: 20px;
+    }
+    .invoice-actions button {
+      cursor: pointer;
+      background: #218838;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 18px;
+      margin: 0 5px;
+      font-weight: 700;
+      font-size: 1em;
+      box-shadow: 0 2px 8px rgba(33, 136, 56, 0.18);
+      transition: background-color 0.20s ease;
+    }
+    .invoice-actions button:hover {
+      background: #196927;
+    }
+    @media print {
+      .invoice-actions { display: none !important; }
+    }
+    @media (max-width: 600px) {
+      .invoice-container {
+        padding: 10px 3px 8px 3px;
+        max-width: 99vw;
+      }
+      th, td { font-size: 0.92em; padding: 5px 2px; }
+      .invoice-actions button { margin: 8px 3px; padding: 7px 10px; }
+    }
+</style>
+</head>
+<body>
+
+<div class="invoice-container">
+  <h1>Invoice</h1>
+  <div class="shop-info">
+    <strong>CSR Grocery Shop</strong><br />
+    103 Thoppur, Anthiyur<br />
+    Erode, INDIA<br />
+    Phone: (+91) 9894302682<br />
+    Email: <a href="mailto:support@csrgroceries.com" style="color:#218838; text-decoration:none;">support@csrgroceries.com</a>
+  </div>
+  <div class="invoice-meta" id="invoiceMeta"></div>
+
+  <div class="customer-info" id="customerInfo"></div>
+
+  <table id="itemsTable">
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th>Qty</th>
+        <th>Unit Price</th>
+        <th>Total Price</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <table class="total-table" style="width:100%; margin-top: 20px;">
+    <tbody>
+      <tr>
+        <td style="text-align:right" colspan="3">Subtotal</td>
+        <td id="subtotal"></td>
+      </tr>
+      <tr>
+        <td style="text-align:right" colspan="3">GST (5%)</td>
+        <td id="gst"></td>
+      </tr>
+      <tr>
+        <td style="text-align:right" colspan="3" class="grandtotal">Grand Total</td>
+        <td id="grandTotal" class="grandtotal"></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="invoice-actions">
+    <button onclick="printAndRedirect()">Print Invoice</button>
+    <button onclick="sendViaWhatsApp()">Send via WhatsApp</button>
+    <button onclick="sendViaEmail()">Send via Email</button>
+  </div>
+</div>
+
+<script>
+  // Format number as Indian Rupee currency
+  function formatCurrency(amount) {
+    return '₹' + Number(amount).toFixed(2);
+  }
+
+  function loadInvoiceData() {
+    const invoiceRaw = localStorage.getItem('invoiceData');
+    if (!invoiceRaw) {
+      document.body.innerHTML = '<div style="color:#c00; font-weight:bold; padding: 30px; text-align:center;">No invoice data available. Please complete a purchase first.</div>';
+      return null;
+    }
+    return JSON.parse(invoiceRaw);
+  }
+
+  function renderInvoice() {
+    const invoiceData = loadInvoiceData();
+    if (!invoiceData) return;
+
+    const shopInfo = document.querySelector('.shop-info');
+    const invoiceMeta = document.getElementById('invoiceMeta');
+    const customerInfo = document.getElementById('customerInfo');
+    const itemsTableBody = document.querySelector('#itemsTable tbody');
+    const subtotalEl = document.getElementById('subtotal');
+    const gstEl = document.getElementById('gst');
+    const grandTotalEl = document.getElementById('grandTotal');
+
+    // Show invoice metadata
+    const dateStr = new Date().toLocaleDateString();
+    invoiceMeta.innerHTML = `
+      Date: ${dateStr}<br/>
+      Invoice #: ${invoiceData.invoice_number || 'N/A'}<br/>
+      Items: ${invoiceData.items.length}
+    `;
+
+    // Show customer info
+    const c = invoiceData.customer || {};
+    customerInfo.innerHTML = `
+      <strong>Customer Details</strong>
+      <span><b>Name:</b> ${c.name || 'N/A'}</span>
+      <span><b>Email:</b> ${c.email || 'N/A'}</span>
+      <span><b>Phone:</b> ${c.phone || 'N/A'}</span>
+      <span><b>Address:</b> ${c.address || 'N/A'}</span>
+      <span><b>Payment Method:</b> ${invoiceData.payment_method || 'N/A'}</span>
+    `;
+
+    // List items
+    itemsTableBody.innerHTML = '';
+    let subtotal = 0;
+    invoiceData.items.forEach(item => {
+      const qty = item.quantity || 1;
+      const price = item.price || 0;
+      const totalPrice = qty * price;
+      subtotal += totalPrice;
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${item.name || item.code || 'Unnamed Product'}</td>
+        <td>${qty}</td>
+        <td>${formatCurrency(price)}</td>
+        <td>${formatCurrency(totalPrice)}</td>
+      `;
+      itemsTableBody.appendChild(row);
+    });
+
+    const gst = +(subtotal * 0.05).toFixed(2);
+    const grandTotal = +(subtotal + gst).toFixed(2);
+
+    subtotalEl.textContent = formatCurrency(subtotal);
+    gstEl.textContent = formatCurrency(gst);
+    grandTotalEl.textContent = formatCurrency(grandTotal);
+  }
+
+  function printAndRedirect() {
+    window.print();
+    window.onafterprint = () => {
+      localStorage.removeItem('cartData'); 
+      
+      window.location.href = '/products'; // Change to your product listing page URL
+    };
+  }
+
+  function sendViaWhatsApp() {
+    const invoiceDataRaw = localStorage.getItem('invoiceData');
+    if (!invoiceDataRaw) {
+      alert('No invoice to share.');
+      return;
+    }
+    const invoiceData = JSON.parse(invoiceDataRaw);
+    const baseUrl = window.location.origin;
+    const invoiceUrl = `${baseUrl}/invoice`;
+
+    const message = `Hello! Here is your invoice from CSR Grocery Shop.\nInvoice Number: ${invoiceData.invoice_number}\nTotal Amount: ₹${invoiceData.total_amount}\nYou can view your invoice here: ${invoiceUrl}`;
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  }
+
+  function sendViaEmail() {
+    const invoiceDataRaw = localStorage.getItem('invoiceData');
+    if (!invoiceDataRaw) {
+      alert('No invoice to share.');
+      return;
+    }
+    const invoiceData = JSON.parse(invoiceDataRaw);
+    const subject = `Invoice from CSR Grocery Shop - ${invoiceData.invoice_number || ''}`;
+    const body = `Hello,\n\nPlease find your invoice from CSR Grocery Shop.\nInvoice Number: ${invoiceData.invoice_number}\nTotal Amount: ₹${invoiceData.total_amount}\n\nThank you for your purchase.\n\nView invoice here: ${window.location.origin}/invoice`;
+
+    const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailtoLink;
+  }
+
+  // Render on load
+  window.onload = renderInvoice;
+</script>
+
+</body>
+</html>

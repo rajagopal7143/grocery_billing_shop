@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Customer Type</title>
+<style>
+  /* Your existing styles unchanged */
+  body {
+    font-family: Arial, sans-serif;
+    background: #f2f7fa;
+    margin: 0; padding: 0;
+    display: flex; justify-content: center; align-items: center; height: 100vh;
+  }
+  .container {
+    background: white;
+    padding: 28px 32px;
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.1);
+    width: 100%;
+    max-width: 480px;
+  }
+  h2 {
+    margin-bottom: 24px;
+    color: #2c3e50;
+  }
+  label {
+    display: block;
+    margin-bottom: 14px;
+    cursor: pointer;
+  }
+  input[type="radio"] {
+    margin-right: 10px;
+  }
+  #existingCustomerSection, #newCustomerSection {
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid #dcdcdc;
+  }
+  input[type="text"], input[type="email"], textarea {
+    width: 100%;
+    padding: 10px 12px;
+    margin-top: 6px;
+    margin-bottom: 16px;
+    border: 1.5px solid #ccc;
+    border-radius: 6px;
+    font-size: 1em;
+    resize: vertical;
+  }
+  textarea {
+    height: 80px;
+  }
+  button {
+    background-color: #2c3e50;
+    color: white;
+    border: none;
+    padding: 12px 18px;
+    font-size: 1em;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  button:hover {
+    background-color: #34495e;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>Select Customer Type</h2>
+  <form id="customerForm">
+    <label>
+      <input type="radio" name="customerType" value="existing" checked />
+      Existing Customer
+    </label>
+    <label>
+      <input type="radio" name="customerType" value="new" />
+      New Customer
+    </label>
+    <div id="existingCustomerSection">
+      <label for="existingIdentifier">Enter your Email or Phone:</label>
+      <input id="existingIdentifier" name="existingIdentifier" type="text" placeholder="Email or Phone" required />
+    </div>
+    <div id="newCustomerSection" style="display:none;">
+      <label for="newName">Name:</label>
+      <input id="newName" name="newName" type="text" placeholder="Full Name" />
+      <label for="newEmail">Email:</label>
+      <input id="newEmail" name="newEmail" type="email" placeholder="Email Address" />
+      <label for="newPhone">Phone:</label>
+      <input id="newPhone" name="newPhone" type="text" placeholder="Phone Number" />
+      <label for="newAddress">Address:</label>
+      <textarea id="newAddress" name="newAddress" placeholder="Address"></textarea>
+    </div>
+    <button type="submit">Proceed</button>
+  </form>
+</div>
+
+<script>
+  // Calculate total amount from localStorage cartData array
+  function calculateTotalAmount() {
+    const cart = JSON.parse(localStorage.getItem('cartData') || '[]');
+    if (!Array.isArray(cart) || cart.length === 0) return 0;
+    return cart.reduce((sum, item) => {
+      const price = parseFloat(item.price) || 0;
+      const qty = parseInt(item.quantity || item.qty || 0);
+      return sum + price * qty;
+    }, 0).toFixed(2);
+  }
+
+  const customerForm = document.getElementById('customerForm');
+
+  // Toggle customer detail sections based on customer type
+  const toggleSections = () => {
+    const selected = document.querySelector('input[name="customerType"]:checked').value;
+    if (selected === 'existing') {
+      document.getElementById('existingCustomerSection').style.display = 'block';
+      document.getElementById('newCustomerSection').style.display = 'none';
+      document.getElementById('existingIdentifier').required = true;
+      document.getElementById('newName').required = false;
+      document.getElementById('newEmail').required = false;
+    } else {
+      document.getElementById('existingCustomerSection').style.display = 'none';
+      document.getElementById('newCustomerSection').style.display = 'block';
+      document.getElementById('existingIdentifier').required = false;
+      document.getElementById('newName').required = true;
+      document.getElementById('newEmail').required = true;
+    }
+  };
+
+  document.querySelectorAll('input[name="customerType"]').forEach(input => {
+    input.addEventListener('change', toggleSections);
+  });
+  toggleSections(); // initial toggle
+
+  // Common success handler
+  function handleCustomerSuccess(type, customerData) {
+    const totalAmount = calculateTotalAmount();
+    alert(`Customer ${type === 'existing' ? 'found' : 'added'} successfully. Proceeding to payment.`);
+    localStorage.setItem('customerType', type);
+    localStorage.setItem('customerData', JSON.stringify(customerData));
+    localStorage.setItem('totalAmount', totalAmount); // optional storage for payment page
+    window.location.href = `/payment_method?total_amount=${totalAmount}`;
+  }
+
+  // Form submit handler
+  customerForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const customerType = document.querySelector('input[name="customerType"]:checked').value;
+
+    if (customerType === 'existing') {
+      const identifier = document.getElementById('existingIdentifier').value.trim();
+      if (!identifier) {
+        alert('Please enter your email or phone.');
+        return;
+      }
+      fetch('/api/check_customer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({identifier: identifier})
+      })
+      .then(res => {
+        if (!res.ok) throw new Error('API error');
+        return res.json();
+      })
+      .then(data => {
+        if (data.exists) {
+          handleCustomerSuccess('existing', data.customer);
+        } else {
+          alert('Customer not found. Please register as new customer.');
+        }
+      })
+      .catch(err => alert('Error checking customer: ' + err.message));
+    } else {
+      const name = document.getElementById('newName').value.trim();
+      const email = document.getElementById('newEmail').value.trim();
+      const phone = document.getElementById('newPhone').value.trim();
+      const address = document.getElementById('newAddress').value.trim();
+      if (!name || !email) {
+        alert('Please enter your name and email.');
+        return;
+      }
+      const newCustomerData = { name, email, phone, address };
+      fetch('/api/add_customer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(newCustomerData)
+      })
+      .then(res => {
+        if (res.ok) return res.json();
+        return res.json().then(err => { throw new Error(err.detail || 'Failed to add customer') });
+      })
+      .then(data => {
+        handleCustomerSuccess('new', newCustomerData);
+      })
+      .catch(err => alert('Error adding customer: ' + err.message));
+    }
+  });
+</script>
+</body>
+</html>

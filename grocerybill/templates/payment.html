@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Select Payment Method</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #dbeafe;
+    color: #333;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .payment-container {
+    background: #fff;
+    padding: 32px 24px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.13);
+    width: 100%;
+    max-width: 380px;
+    margin-top: 48px;
+    text-align: center;
+  }
+  h1 {
+    color: #007bff;
+    margin-bottom: 18px;
+    font-size: 2em;
+  }
+  #total-amount-display {
+    background: #e5f8e8;
+    color: #218838;
+    font-size: 1.15em;
+    font-weight: bold;
+    padding: 10px;
+    margin-bottom: 28px;
+    border-radius: 8px;
+  }
+  .payment-option {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    border: 1.5px solid #e6e6e6;
+    border-radius: 8px;
+    background: #f9fbff;
+    cursor: pointer;
+    transition: box-shadow .33s, background .18s, transform .33s;
+    font-size: 1.06em;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  }
+  .payment-option.selected, .payment-option:hover {
+    background: #e7f0fa;
+    box-shadow: 0 8px 24px rgba(0,123,255,0.11);
+  }
+  .payment-option i {
+    font-size: 1.45em;
+    margin-right: 14px;
+    color: #007bff;
+  }
+  .payment-section {
+    margin-top: 26px;
+    background: #effaf3;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(40,167,69,0.05);
+    padding: 15px;
+    text-align: center;
+    display: none;
+  }
+  #upi-qr-code {
+    margin: 15px 0;
+    display: flex;
+    justify-content: center;
+  }
+  .button {
+    background: linear-gradient(90deg, #007bff, #2186eb);
+    color: white;
+    border: none;
+    padding: 11px 26px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1em;
+    box-shadow: 0 4px 16px rgba(0,123,255,.12);
+    margin: 9px 0;
+    transition: all .25s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .button:hover {
+    background: linear-gradient(90deg, #218838, #38c172);
+  }
+  /* Modal overlay & content */
+  .modal-overlay {
+    position: fixed;
+    top:0; left:0; width:100vw; height:100vh;
+    background: rgba(20,30,40,0.10);
+    display: none;
+    z-index: 99;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal {
+    background: #fff;
+    padding: 28px 18px;
+    border-radius: 10px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+    text-align: center;
+    min-width: 240px;
+  }
+  .modal label {
+    font-weight: bold;
+    margin-bottom: 10px;
+    display: block;
+  }
+  .modal input {
+    border: 1.5px solid #007bff;
+    border-radius: 7px;
+    padding: 8px 10px;
+    font-size: 1em;
+    width: 92%;
+    margin-bottom: 16px;
+  }
+  .modal .button {
+    width: 100%;
+  }
+</style>
+</head>
+<body>
+<div class="payment-container">
+  <h1>Select Payment Method</h1>
+  <div id="total-amount-display">Total Amount: ₹<span id="totalAmountSpan">0.00</span></div>
+
+  <!-- UPI OPTION -->
+  <div class="payment-option" onclick="togglePaymentSection('upi', this)">
+    <i class="fa-solid fa-mobile-screen"></i>
+    <span>UPI (PhonePe, Google Pay, etc.)</span>
+  </div>
+  <div id="upi-section" class="payment-section">
+    <p><b>Scan the QR code</b> or click the button to pay via UPI.</p>
+    <div id="upi-qr-code"></div>
+    <button class="button" onclick="openUpiModal()">
+      <i class="fa-solid fa-bolt"></i> Pay with UPI App
+    </button>
+  </div>
+
+  <!-- CARD OPTION -->
+  <div class="payment-option" onclick="togglePaymentSection('card', this)">
+    <i class="fa-solid fa-credit-card"></i>
+    <span>Credit / Debit Card</span>
+  </div>
+  <div id="card-section" class="payment-section">
+    <label>Card Number</label><br />
+    <input type="text" id="card-number" placeholder="1234 5678 9012 3456" /><br /><br />
+    <label>Expiry Date</label><br />
+    <input type="text" id="card-expiry" placeholder="MM/YY" /><br /><br />
+    <label>CVV</label><br />
+    <input type="password" id="card-cvv" placeholder="***" /><br /><br />
+    <button class="button" onclick="submitCardPayment()">
+      <i class="fa-solid fa-credit-card"></i> Pay with Card
+    </button>
+  </div>
+
+  <!-- CASH OPTION -->
+  <div class="payment-option" onclick="payWithCash(this)">
+    <i class="fa-solid fa-money-bill-wave"></i>
+    <span>Cash</span>
+  </div>
+</div>
+
+<!-- UPI Payment Modal -->
+<div class="modal-overlay" id="upi-modal">
+  <div class="modal">
+    <label for="upi-info">Enter your Phone or UPI ID:</label>
+    <input type="text" id="upi-info" placeholder="Phone or UPI ID" />
+    <button class="button" onclick="submitUpiPayment()">Send Payment Request</button>
+    <button class="button" style="background:#aaa; margin-top:7px;" onclick="closeUpiModal()">Cancel</button>
+    <div id="upi-modal-msg" style="margin-top:10px; color:#218838; font-weight:bold"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/js/all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  // Show only one payment section at a time
+  function togglePaymentSection(method, btnEl) {
+    const sections = {
+      'upi': document.getElementById('upi-section'),
+      'card': document.getElementById('card-section')
+    };
+
+    document.querySelectorAll('.payment-option').forEach(el => el.classList.remove('selected'));
+    btnEl.classList.add('selected');
+    Object.values(sections).forEach(s => s.style.display = 'none');
+    if (sections[method]) {
+      sections[method].style.display = 'block';
+    }
+
+    if (method === 'upi') {
+      const totalAmount = getTotalAmount();
+      const randomInvoiceNumber = 'INV-' + Math.floor(100000 + Math.random() * 900000);
+      const upiLink = `upi://pay?pa=gopalcraja82-1@okaxis&pn=Raja Gopal&am=${totalAmount}&cu=INR&tn=${randomInvoiceNumber}`;
+      const qrCodeContainer = document.getElementById('upi-qr-code');
+      qrCodeContainer.innerHTML = '';
+      new QRCode(qrCodeContainer, {
+        text: upiLink,
+        width: 180,
+        height: 180,
+        colorDark: '#007bff',
+        colorLight: '#fff',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    }
+  }
+
+  // Retrieve total amount from cart
+  function getTotalAmount() {
+    const cartData = JSON.parse(localStorage.getItem('cartData') || '[]');
+    const total = cartData.reduce((sum, item) => {
+      const price = parseFloat(item.price) || 0;
+      const qty = parseInt(item.quantity) || 0;
+      return sum + price * qty;
+    }, 0);
+    document.getElementById('totalAmountSpan').textContent = total.toFixed(2);
+    return total.toFixed(2);
+  }
+
+  // Save invoice and redirect helper
+  function saveInvoiceAndRedirect(payment_method, extraCustomerFields = {}) {
+    const cartData = JSON.parse(localStorage.getItem('cartData') || '[]');
+    const customerData = { ...(JSON.parse(localStorage.getItem('customerData') || '{}')), ...extraCustomerFields };
+    const totalAmount = getTotalAmount();
+    const invoiceData = {
+      items: cartData,
+      payment_method,
+      invoice_number: 'INV-' + Math.floor(100000 + Math.random() * 900000),
+      total_amount: totalAmount,
+      customer: customerData
+    };
+    localStorage.setItem('invoiceData', JSON.stringify(invoiceData));
+    window.location.href = "/invoice";
+  }
+
+  // Cash payment
+  function payWithCash(btnEl) {
+    document.querySelectorAll('.payment-option').forEach(el => el.classList.remove('selected'));
+    btnEl.classList.add('selected');
+    saveInvoiceAndRedirect('cash');
+  }
+
+  // Card payment
+  function submitCardPayment() {
+    const cardNumber = document.getElementById('card-number').value.trim();
+    const expiry = document.getElementById('card-expiry').value.trim();
+    const cvv = document.getElementById('card-cvv').value.trim();
+    if (!cardNumber || !expiry || !cvv) {
+      alert("Please enter card details.");
+      return;
+    }
+    saveInvoiceAndRedirect('card');
+  }
+
+  // UPI modal functions
+  function openUpiModal() {
+    document.getElementById('upi-modal').style.display = 'flex';
+    document.getElementById('upi-modal-msg').textContent = '';
+    document.getElementById('upi-info').value = '';
+  }
+  function closeUpiModal() {
+    document.getElementById('upi-modal').style.display = 'none';
+  }
+
+  // Submit UPI payment
+  async function submitUpiPayment() {
+    const upiValue = document.getElementById('upi-info').value.trim();
+    if (!upiValue) {
+      document.getElementById('upi-modal-msg').textContent = 'Please enter your Phone or UPI ID.';
+      return;
+    }
+    try {
+      // If backend integration needed, do the fetch here
+      saveInvoiceAndRedirect('upi', { upi: upiValue });
+      document.getElementById('upi-modal-msg').textContent = 'Payment request sent successfully!';
+      setTimeout(() => { window.location.href = "/invoice"; }, 1200);
+    } catch (err) {
+      document.getElementById('upi-modal-msg').textContent = 'Error in request.';
+    }
+  }
+
+  // On page load, show total amount
+  getTotalAmount();
+</script>
+</body>
+</html>
