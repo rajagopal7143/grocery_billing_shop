@@ -5,64 +5,146 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Customer Type</title>
 <style>
-  /* Your existing styles unchanged */
+  /* Reset & base */
+  * {
+    box-sizing: border-box;
+  }
   body {
-    font-family: Arial, sans-serif;
-    background: #f2f7fa;
     margin: 0; padding: 0;
-    display: flex; justify-content: center; align-items: center; height: 100vh;
-  }
-  .container {
-    background: white;
-    padding: 28px 32px;
-    border-radius: 12px;
-    box-shadow: 0 6px 20px rgb(0 0 0 / 0.1);
-    width: 100%;
-    max-width: 480px;
-  }
-  h2 {
-    margin-bottom: 24px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #74ebd5 0%, #ACB6E5 100%);
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh;
     color: #2c3e50;
   }
+
+  /* Container for form card */
+  .container {
+    background: #ffffffdd;
+    backdrop-filter: saturate(180%) blur(10px);
+    border-radius: 16px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.12);
+    padding: 36px 40px 40px 40px;
+    width: 100%;
+    max-width: 480px;
+    transition: transform 0.3s ease;
+  }
+  .container:hover {
+    transform: translateY(-8px);
+  }
+
+  /* Title */
+  h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 28px;
+    text-align: center;
+    color: #1a237e;
+    user-select: none;
+    letter-spacing: 0.05em;
+  }
+
+  /* Radio buttons with custom styling */
   label {
-    display: block;
-    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    margin-bottom: 20px;
     cursor: pointer;
+    font-size: 1.1rem;
+    user-select: none;
   }
-  input[type="radio"] {
-    margin-right: 10px;
+  label input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: #e4e7ea;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    margin-right: 14px;
+    position: relative;
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+    transition: background-color 0.3s ease;
   }
+  label input[type="radio"]:checked {
+    background-color: #1a237e;
+  }
+  label input[type="radio"]:checked::after {
+    content: "";
+    display: block;
+    position: absolute;
+    top: 5px; left: 5px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: white;
+  }
+  label input[type="radio"]:focus-visible {
+    outline: 2px solid #3f51b5;
+    outline-offset: 3px;
+  }
+
+  /* Section containers */
   #existingCustomerSection, #newCustomerSection {
-    margin-top: 20px;
-    padding-top: 12px;
-    border-top: 1px solid #dcdcdc;
+    margin-top: 28px;
+    padding-top: 18px;
+    border-top: 2px solid #ddd;
+    transition: max-height 0.4s ease, opacity 0.4s ease;
   }
+
+  /* Form inputs */
   input[type="text"], input[type="email"], textarea {
     width: 100%;
-    padding: 10px 12px;
-    margin-top: 6px;
-    margin-bottom: 16px;
-    border: 1.5px solid #ccc;
-    border-radius: 6px;
-    font-size: 1em;
+    padding: 14px 16px;
+    margin-top: 8px;
+    margin-bottom: 18px;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #1a237e;
+    transition: border-color 0.3s ease;
     resize: vertical;
   }
+  input[type="text"]:focus, input[type="email"]:focus, textarea:focus {
+    border-color: #3f51b5;
+    outline: none;
+    box-shadow: 0 0 8px rgba(63, 81, 181, 0.3);
+  }
   textarea {
-    height: 80px;
+    height: 90px;
   }
+
+  /* Submit button */
   button {
-    background-color: #2c3e50;
-    color: white;
+    display: block;
+    width: 100%;
+    background-color: #1a237e;
+    color: #fff;
+    padding: 16px 0;
+    font-size: 1.15rem;
+    font-weight: 700;
     border: none;
-    padding: 12px 18px;
-    font-size: 1em;
-    border-radius: 8px;
+    border-radius: 12px;
     cursor: pointer;
-    transition: background 0.3s ease;
+    box-shadow: 0 6px 16px rgba(26, 35, 126, 0.45);
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
   }
-  button:hover {
-    background-color: #34495e;
+  button:hover, button:focus-visible {
+    background-color: #3949ab;
+    box-shadow: 0 8px 22px rgba(57, 73, 171, 0.65);
+    outline: none;
   }
+
+  /* Smooth show/hide of sections */
+  #existingCustomerSection.hide, #newCustomerSection.hide {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    padding-top: 0;
+    margin-top: 0;
+    border-top: none;
+  }
+
 </style>
 </head>
 <body>
