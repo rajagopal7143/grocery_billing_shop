@@ -1,22 +1,24 @@
 import uvicorn
 from fastapi import FastAPI, Form, Request, Depends, HTTPException, status, Body, Path, Query
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, StreamingResponse
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, DateTime, func
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, DateTime, func, extract, PrimaryKeyConstraint, text
 from sqlalchemy.orm import sessionmaker, Session, declarative_base, relationship
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, PositiveInt, constr
 from datetime import datetime, timedelta
 from typing import Optional
 from starlette.status import HTTP_303_SEE_OTHER
 from flask_sqlalchemy import SQLAlchemy
 from flask import Flask, render_template, request, redirect, url_for, flash
-from sqlalchemy.exc import IntegrityError
-from auth import get_current_user, User # <-- Also corrected
+from sqlalchemy.exc import IntegrityError, OperationalError
+from auth import get_current_user, User 
+from fastapi.requests import Request
+# <-- Also corrected
 import qrcode
-import io
+import io, csv
 # -------------------------------------------------------------------
 # 1. Configuration & Database Setup
 # -------------------------------------------------------------------
@@ -29,7 +31,7 @@ DATABASE_URL = "mysql+pymysql://fastapi_user:your_password@localhost/grocery_sho
 # JWT Configuration
 SECRET_KEY = "a_very_secret_key_that_should_be_changed"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 templates = Jinja2Templates(directory="templates")
 
@@ -68,7 +70,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
     hashed_password = Column(String(100), nullable=False)
-
+    sales = relationship("Sale", back_populates="user")
 
 class Product(Base):
     __tablename__ = "products"
@@ -82,11 +84,21 @@ class Product(Base):
 
 class Sale(Base):
     __tablename__ = "sales"
+
+    # --- FIX: ADD primary_key=True ---
+    # This tells SQLAlchemy that the 'id' column is the primary key for the 'sales' table.
     id = Column(Integer, primary_key=True, index=True)
+
+    # --- Ensure other columns are correct ---
     product_id = Column(Integer, ForeignKey("products.id"))
-    quantity = Column(Integer, nullable=False)
-    total_price = Column(Float, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    quantity = Column(Integer)
+    total_price = Column(Float)
+    payment_method = Column(String(50))
     sale_date = Column(DateTime, default=datetime.utcnow)
+
+    # --- Relationships ---
+    user = relationship("User", back_populates="sales")
     product = relationship("Product")
 
 
@@ -98,6 +110,16 @@ class Customer(Base):
     phone = Column(String(20), nullable=True)
     address = Column(String(250), nullable=True)
     registered_on = Column(DateTime, default=datetime.utcnow)
+
+class Payment(Base):
+    __tablename__ = "payments"
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(String(50), unique=True, index=True)
+    amount = Column(Float, nullable=False)
+    status = Column(String(50), nullable=False)  # e.g., initiated, success, failed
+    payment_gateway_id = Column(String(100))     # gateway's payment ID
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # -------------------------------------------------------------------
@@ -251,7 +273,7 @@ def home():
                 margin: 0;
                 min-height: 100vh;
                 font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
-                background: linear-gradient(120deg, #C3FFD7 0%, #93F9B9 100%);
+                background: linear-gradient(120deg, #f0354e 0%, #6f82a6 100%);
                 display: flex;
                 justify-content: center;
                 align-items: center;
@@ -923,11 +945,26 @@ async def profile():
             <a href="/sales" tabindex="0">Sales</a>
             <a href="/customers" tabindex="0">Customers details</a>
             <a href="/customers/add" tabindex="0">Add Customer</a>
+            <a href="/barcode-generator" tabindex="0">Barcode Generator</a>
             <a href="#" class="logout" onclick="logout()" tabindex="0">Logout</a>
         </nav>
-        <main class="content" tabindex="0" role="main">
-            <h1 id="welcomeMessage">Loading profile...</h1>
+        <main class="content" tabindex="0" role="main" aria-live="polite" aria-atomic="true">
+            <div class="welcome-container" style="max-width: 700px; margin: 0 auto 40px auto; text-align: center; padding: 20px 15px; background: white; border-radius: 14px; box-shadow: 0 8px 25px rgba(26, 83, 163, 0.15);">
+                <h1 id="welcomeMessage" style="font-size: 2.8em; color: #155c9a; font-weight: 800; margin-bottom: 12px; user-select: none; letter-spacing: 0.05em;">
+                    Loading profile...
+                </h1>
+                <p style="font-size: 1.3em; color: #2c3e50; margin-bottom: 12px; font-weight: 600;">
+                    Freshness Delivered to Your Doorstep!
+                </p>
+                <p style="font-size: 1.1em; color: #455a64; line-height: 1.5; margin-bottom: 0;">
+                    Explore our wide selection of quality groceries and unbeatable deals. Shop now and experience convenience and freshness like never before!
+                </p>
+            </div>
+            <div class="cards-container" aria-label="User stats and info">
+                <!-- Existing cards here -->
+            </div>
         </main>
+
         <script>
             async function loadProfile() {
                 const token = localStorage.getItem("access_token");
@@ -985,59 +1022,179 @@ async def profile_user(current_user: User = Depends(get_current_user)):
     return {"username": current_user.username}
 
 # --- NEW: Live Dashboard Routes ---
+# Place this code inside your grocerybill.py file
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def get_dashboard_page():
     return """
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Live Dashboard</title>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
-            h1 { color: #1c1e21; }
-            .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
-            .card { background-color: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); padding: 20px; }
-            .card h2 { margin-top: 0; font-size: 1.2em; color: #606770; }
-            .card .stat { font-size: 2.5em; font-weight: 600; color: #1877f2; }
-            .chart-container { grid-column: 1 / -1; } /* Span full width */
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
-            th { background-color: #f5f6f7; }
-            a { color: #1877f2; text-decoration: none; font-weight: 600; }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                background-color: #f7f9fc;
+                margin: 0;
+                padding: 30px 40px;
+                color: #2c3e50;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            a.back-link {
+                padding: 12px 28px;
+                margin-bottom: 24px;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                text-decoration: none;
+                color: #1877f2;
+                background-color: #e5f1ff;
+                border-radius: 30px;
+                font-weight: 600;
+                box-shadow: 0 4px 8px rgba(24, 119, 242, 0.15);
+                transition: background-color 0.25s ease, color 0.25s ease;
+            }
+            a.back-link:hover,
+            a.back-link:focus {
+                background-color: #d0e4ff;
+                color: #0f49a5;
+                outline: none;
+            }
+            h1 {
+                color: #1a237e;
+                font-weight: 700;
+                font-size: 2.8rem;
+                margin-bottom: 32px;
+                text-align: center;
+                user-select: none;
+            }
+            .dashboard-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 28px;
+                width: 100%;
+                max-width: 1200px;
+            }
+            .card {
+                background-color: white;
+                border-radius: 12px;
+                box-shadow: 0 10px 25px rgba(33, 150, 243, 0.1);
+                padding: 26px 22px 30px 22px;
+                transition: box-shadow 0.3s ease, transform 0.25s ease;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                cursor: default;
+                user-select: none;
+            }
+            .card:hover {
+                transform: translateY(-6px);
+                box-shadow: 0 15px 40px rgba(33, 150, 243, 0.2);
+            }
+            .card h2 {
+                font-size: 1.3em;
+                margin: 0 0 14px 0;
+                color: #3f51b5;
+                font-weight: 700;
+                user-select: text;
+            }
+            .card .stat {
+                font-size: 3em;
+                font-weight: 700;
+                color: #2196f3;
+                user-select: text;
+            }
+            .chart-container {
+                grid-column: 1 / -1;
+                padding-top: 15px;
+                height: 360px;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 18px;
+                font-size: 0.95rem;
+                user-select: text;
+            }
+            th, td {
+                text-align: left;
+                padding: 12px 14px;
+                border-bottom: 1px solid #e0e0e0;
+            }
+            th {
+                background-color: #f2f6fc;
+                color: #394548;
+                font-weight: 600;
+            }
+            tbody tr:hover {
+                background-color: #f9fbff;
+            }
+            @media (max-width: 600px) {
+                body {
+                    padding: 20px 15px;
+                }
+                .card .stat {
+                    font-size: 2.3em;
+                }
+                .chart-container {
+                    height: 280px;
+                }
+            }
+            .sr-only { 
+                position: absolute;
+                width: 1px; 
+                height: 1px; 
+                padding: 0; 
+                overflow: hidden; 
+                clip: rect(0, 0, 0, 0); 
+                white-space: nowrap;
+                border: 0;
+            }
         </style>
     </head>
     <body>
-         <a href="/profile" style="padding: 10px 20px; font-family: sans-serif; text-decoration: none; color: #0056b3; background-color: #eaf2ff; border-radius: 50px;">&larr;Back to Home</a>
+        <a href="/profile" class="back-link" aria-label="Back to Home">&larr; Back to Home</a>
         <h1>Live Dashboard</h1>
-        <div class="dashboard-grid">
-            <div class="card">
+        <div class="dashboard-grid" role="region" aria-label="Dashboard statistics and charts">
+            <div class="card" tabindex="0" aria-label="Total revenue">
                 <h2>Total Revenue</h2>
                 <p class="stat" id="total-revenue">Loading...</p>
             </div>
-            <div class="card">
+            <div class="card" tabindex="0" aria-label="Total sales">
                 <h2>Total Sales</h2>
                 <p class="stat" id="sales-count">Loading...</p>
             </div>
-            <div class="card">
+            <div class="card" tabindex="0" aria-label="Total products">
                 <h2>Total Products</h2>
                 <p class="stat" id="product-count">Loading...</p>
             </div>
-            <div class="card">
+            <div class="card" tabindex="0" aria-label="Total customers">
                 <h2>Total Customers</h2>
                 <p class="stat" id="customer-count">Loading...</p>
             </div>
-            <div class="card chart-container">
+            <div class="card chart-container" aria-label="Top Selling Products Pie Chart" tabindex="0">
                 <h2>Top Selling Products (by Quantity)</h2>
-                <canvas id="topProductsChart"></canvas>
+                <canvas id="topProductsChart" role="img" aria-describedby="descTopProducts"></canvas>
+                <p id="descTopProducts" class="sr-only">Pie chart showing top selling products by quantity sold.</p>
             </div>
-            <div class="card chart-container">
+            <div class="card chart-container" aria-label="Recent Sales Table" tabindex="0">
                 <h2>Recent Sales</h2>
-                <table id="recent-sales-table">
-                    <thead><tr><th>Product</th><th>Quantity</th><th>Total Price</th><th>Date</th></tr></thead>
-                    <tbody><tr><td colspan="4">Loading...</td></tr></tbody>
+                <table id="recent-sales-table" aria-live="polite" aria-relevant="all" aria-label="Recent Sales Table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Product</th>
+                            <th scope="col">Quantity</th>
+                            <th scope="col">Total Price</th>
+                            <th scope="col">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="4" style="text-align:center; font-style:italic;">Loading...</td></tr>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -1050,19 +1207,18 @@ def get_dashboard_page():
                 }
                 try {
                     const response = await fetch('/api/dashboard-stats', {
-                        headers: { 'Authorization': `Bearer ${token}` }
+                        headers: { 'Authorization': 'Bearer ' + token }
                     });
                     if (!response.ok) throw new Error('Failed to load dashboard data');
                     const data = await response.json();
-                    
+
                     document.getElementById('total-revenue').textContent = `₹${data.total_revenue.toFixed(2)}`;
                     document.getElementById('sales-count').textContent = data.sales_count;
                     document.getElementById('product-count').textContent = data.product_count;
                     document.getElementById('customer-count').textContent = data.customer_count;
-                    
+
                     renderTopProductsChart(data.top_products);
                     renderRecentSales(data.recent_sales);
-
                 } catch (error) {
                     console.error("Dashboard Error:", error);
                 }
@@ -1070,19 +1226,32 @@ def get_dashboard_page():
 
             function renderTopProductsChart(topProducts) {
                 const ctx = document.getElementById('topProductsChart').getContext('2d');
-                new Chart(ctx, {
-                    type: 'bar',
+                if(window.topProductsChartInstance) {
+                    window.topProductsChartInstance.destroy();
+                }
+
+                const colors = [
+                    '#42a5f5', '#66bb6a', '#ffa726', '#ab47bc', '#26c6da', '#ef5350', '#8d6e63', '#d4e157'
+                ];
+                window.topProductsChartInstance = new Chart(ctx, {
+                    type: 'pie',
                     data: {
                         labels: topProducts.map(p => p.name),
                         datasets: [{
                             label: 'Quantity Sold',
                             data: topProducts.map(p => p.total_quantity),
-                            backgroundColor: 'rgba(54, 162, 235, 0.6)',
-                            borderColor: 'rgba(54, 162, 235, 1)',
-                            borderWidth: 1
+                            backgroundColor: colors.slice(0, topProducts.length),
+                            borderColor: '#fff',
+                            borderWidth: 2,
                         }]
                     },
-                    options: { scales: { y: { beginAtZero: true } } }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'right', labels: { boxWidth: 16, padding: 14 } }
+                        }
+                    }
                 });
             }
 
@@ -1090,7 +1259,7 @@ def get_dashboard_page():
                 const tbody = document.querySelector("#recent-sales-table tbody");
                 tbody.innerHTML = "";
                 if(recentSales.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4">No recent sales.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; font-style: italic;">No recent sales.</td></tr>';
                     return;
                 }
                 recentSales.forEach(sale => {
@@ -1141,538 +1310,11 @@ def get_dashboard_stats(db: Session = Depends(get_db), current_user: User = Depe
         "top_products": top_products,
         "recent_sales": recent_sales
     }
-
-
-
-@app.route('/dashboard')
-def dashboard():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))  # Redirect if not logged in
-
-    # Fetch needed data from database (example queries):
-    products = Product.query.all()
-    sales = Sale.query.order_by(Sale.date.desc()).limit(5).all()
-    customers = Customer.query.order_by(Customer.registered_on.desc()).limit(5).all()
-
-    # Pass data to dashboard template
-    return render_template('dashboard.html', products=products, sales=sales, customers=customers)
-
 # --- END NEW DASHBOARD ROUTES ---
 
-
 @app.get("/products", response_class=HTMLResponse)
-async def products_page():
-    return """
-    <html>
-    <head>
-        <title>Products - Grocery Shop</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                margin: 0;
-                padding: 0;
-                background: #f9f9f9;
-            }
-            h1 {
-                padding: 20px;
-                text-align: center;
-            }
-            .back-link {
-                display: inline-block;
-                margin: 15px 20px 10px;
-                padding: 8px 14px;
-                background-color: #007bff;
-                color: white;
-                text-decoration: none;
-                font-weight: 600;
-                border-radius: 6px;
-                box-shadow: 0 2px 6px rgba(0, 123, 255, 0.4);
-                transition: background-color 0.3s ease, box-shadow 0.3s ease;
-            }
-            .back-link:hover {
-                background-color: #0056b3;
-                box-shadow: 0 4px 12px rgba(0, 86, 179, 0.6);
-                text-decoration: none;
-            }
-            /* Search Bar */
-            .search-bar {
-                max-width: 400px;
-                margin: 20px auto 30px;
-                display: flex;
-                gap: 10px;
-            }
-            #searchInput {
-                flex: 1;
-                padding: 10px;
-                font-size: 16px;
-                border: 1.5px solid #ccc;
-                border-radius: 6px;
-                transition: border-color 0.3s ease;
-            }
-            #searchInput:focus {
-                border-color: #28a745;
-                outline: none;
-                box-shadow: 0 0 8px #28a745aa;
-            }
-            #searchBtn {
-                padding: 10px 20px;
-                font-size: 16px;
-                font-weight: 600;
-                border: none;
-                background-color: #28a745;
-                color: white;
-                border-radius: 6px;
-                cursor: pointer;
-                transition: background-color 0.3s ease;
-            }
-            #searchBtn:hover {
-                background-color: #218838;
-            }
-            /* Product Grid */
-            .catalog-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-                gap: 20px;
-                padding: 0 20px 40px;
-                max-width: 1200px;
-                margin: 0 auto;
-            }
-            .product-card {
-                background: #fff;
-                border-radius: 8px;
-                padding: 15px;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                transition: transform 0.25s ease, box-shadow 0.25s ease;
-                text-align: center;
-                display: flex;
-                flex-direction: column;
-            }
-            .product-card:hover {
-                transform: scale(1.05);
-                box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            }
-            .product-image {
-                width: 100%;
-                height: 150px;
-                object-fit: cover;
-                border-radius: 5px;
-            }
-            .add-cart-btn {
-                margin-top: 10px;
-                padding: 8px 15px;
-                background: #28a745;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                transition: background 0.25s ease;
-            }
-            .add-cart-btn:hover {
-                background: #218838;
-            }
-            .product-card .product-details {
-                flex-grow: 1;
-            }
-            .action-buttons {
-                margin-top: 12px;
-                display: flex;
-                justify-content: center;
-                gap: 10px;
-            }
-            .edit-btn, .delete-btn {
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-size: 14px;
-                cursor: pointer;
-                border: none;
-                font-weight: 600;
-                transition: background-color 0.2s;
-            }
-            .edit-btn {
-                background-color: #ffc107;
-                color: #333;
-                text-decoration: none;
-            }
-            .edit-btn:hover { background-color: #e0a800; }
-            .delete-btn {
-                background-color: #dc3545;
-                color: white;
-            }
-            .delete-btn:hover { background-color: #c82333; }
-
-            /* Sidebar Cart */
-            #cartSidebar {
-                position: fixed;
-                top: 0;
-                right: -450px;
-                width: 350px;
-                height: 100%;
-                background: #fff;
-                box-shadow: -2px 0 10px rgba(0,0,0,0.2);
-                padding: 20px;
-                transition: right 0.4s ease;
-                z-index: 1000;
-                overflow-y: auto;
-            }
-            #cartSidebar.open {
-                right: 0;
-            }
-            #cartItems li {
-                margin-bottom: 10px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                gap: 5px;
-            }
-            .remove-btn {
-                background: #dc3545;
-                color: #fff;
-                border: none;
-                padding: 4px 8px;
-                border-radius: 4px;
-                cursor: pointer;
-                transition: background 0.2s ease;
-            }
-            .remove-btn:hover {
-                background: #c82333;
-            }
-            /* Checkout Button */
-            .checkout-btn {
-                margin-top: 15px;
-                width: 100%;
-                padding: 12px;
-                background: linear-gradient(135deg, #28a745, #218838);
-                color: #fff;
-                font-size: 16px;
-                font-weight: bold;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-                transition: transform 0.2s ease, box-shadow 0.2s ease;
-            }
-            .checkout-btn:hover {
-                transform: scale(1.05);
-                box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            }
-            /* Clear Cart Button */
-            .clear-cart-btn {
-                margin-top: 10px;
-                width: 100%;
-                padding: 10px;
-                background: #dc3545;
-                color: #fff;
-                font-size: 15px;
-                font-weight: bold;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-                transition: background 0.25s ease, transform 0.2s ease;
-            }
-            .clear-cart-btn:hover {
-                background: #c82333;
-                transform: scale(1.05);
-            }
-            /* Quantity Controls */
-            .quantity-controls {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            }
-            .qty-btn {
-                width: 26px;
-                height: 26px;
-                border-radius: 50%;
-                border: none;
-                background: #007bff;
-                color: white;
-                cursor: pointer;
-                font-size: 18px;
-                line-height: 0;
-                transition: background 0.2s ease;
-            }
-            .qty-btn:hover {
-                background: #0056b3;
-            }
-            .qty-display {
-                min-width: 20px;
-                text-align: center;
-                font-weight: bold;
-            }
-            /* Floating Cart Button */
-            #cartToggleBtn {
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                background: #007bff;
-                color: white;
-                border: none;
-                padding: 15px 20px;
-                border-radius: 50%;
-                font-size: 18px;
-                cursor: pointer;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-                transition: transform 0.3s ease, background 0.3s ease;
-                z-index: 1100;
-            }
-            #cartToggleBtn:hover {
-                background: #0056b3;
-                transform: scale(1.1);
-            }
-        </style>
-    </head>
-    <body>
-        <a href="/profile" class="back-link">&#8592; Back to Dashboard</a>
-        
-        <h1>Product Catalog</h1>
-
-        <div class="search-bar">
-            <input type="text" id="searchInput" placeholder="Search products by name, category or code" />
-            <button id="searchBtn">Search</button>
-        </div>
-
-        <div class="catalog-grid" id="catalogGrid">Loading products...</div>
-          
-        <div id="cartSidebar">
-            <h2>Your Cart</h2>
-            <ul id="cartItems"><li>Your cart is empty</li></ul>
-            
-            <div id="cartTotal" style="font-size: 18px; font-weight: bold; margin-top: 10px;">
-                Total: ₹0.00
-            </div>
-
-            <button class="clear-cart-btn" onclick="clearCart()">🗑️ Clear Cart</button>
-            <button class="checkout-btn" onclick="checkout()">🛒 Buy Now</button>
-        </div>
-
-        <button id="cartToggleBtn" onclick="toggleCart()">🛒</button>
-
-        <script>
-            // DOM Elements
-            const catalogGrid = document.getElementById('catalogGrid');
-            const searchInput = document.getElementById('searchInput');
-            const searchBtn = document.getElementById('searchBtn');
-            const cartItemsUl = document.getElementById('cartItems');
-            const invoiceDiv = document.getElementById('invoice');
-            const cartSidebar = document.getElementById('cartSidebar');
-
-            let products = [];
-            let cart = JSON.parse(localStorage.getItem("cartData")) || [];
-
-            function toggleCart() {
-                cartSidebar.classList.toggle('open');
-            }
-
-            function saveCart() {
-                localStorage.setItem("cartData", JSON.stringify(cart));
-            }
-
-            async function loadProducts() {
-                try {
-                    const res = await fetch('/api/products');
-                    products = await res.json();
-                    displayProducts(products);
-                } catch (error) {
-                    catalogGrid.innerHTML = '<p>Error loading products.</p>';
-                }
-            }
-
-            function displayProducts(items) {
-                if (items.length === 0) {
-                    catalogGrid.innerHTML = '<p>No products found.</p>';
-                    return;
-                }
-                const filterText = searchInput.value.toLowerCase().trim();
-                const filtered = items.filter(p =>
-                    p.name.toLowerCase().includes(filterText) ||
-                    p.category.toLowerCase().includes(filterText) ||
-                    p.code.toLowerCase().includes(filterText)
-                );
-                if(filtered.length === 0){
-                    catalogGrid.innerHTML = '<p>No matching products found.</p>';
-                    return;
-                }
-                catalogGrid.innerHTML = '';
-                filtered.forEach(product => {
-                    const card = document.createElement('div');
-                    card.className = 'product-card';
-                    card.innerHTML = `
-                        <img src="${product.image_url}" alt="${product.name}" class="product-image" loading="lazy" />
-                        <div class="product-details">
-                            <div class="product-name">${product.name}</div>
-                            <div class="product-code">Code: ${product.code}</div>
-                            <div class="product-category">${product.category}</div>
-                            <div>Price: ₹${product.price.toFixed(2)}</div>
-                        </div>
-                        <button class="add-cart-btn" onclick="addToCart('${product.code}')">Add to Cart</button>
-                        <div class="action-buttons">
-                            <button class="edit-btn" onclick="window.location.href='/products/edit/${product.code}'">Edit</button>
-                            <button class="delete-btn" onclick="deleteProduct('${product.code}', this)">Delete</button>
-                        </div>
-                    `;
-                    catalogGrid.appendChild(card);
-                });
-            }
-
-            async function deleteProduct(code, buttonElement) {
-                if (!confirm(`Are you sure you want to delete product ${code}?`)) {
-                    return;
-                }
-
-                try {
-                    const token = localStorage.getItem("access_token");
-                    if (!token) {
-                        alert("Please login to perform this action.");
-                        window.location.href = "/login";
-                        return;
-                    }
-
-                    const response = await fetch(`/api/products/delete/${code}`, {
-                        method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-
-                    if (response.ok) {
-                        alert('Product deleted successfully!');
-                        buttonElement.closest('.product-card').remove();
-                    } else {
-                        const result = await response.json();
-                        alert(`Failed to delete product: ${result.detail}`);
-                    }
-                } catch (err) {
-                    alert('An error occurred while deleting the product.');
-                }
-            }
-
-            function filterProducts() {
-                displayProducts(products);
-            }
-
-            searchBtn.addEventListener('click', filterProducts);
-            searchInput.addEventListener('keyup', e => {
-                if(e.key === 'Enter'){ filterProducts(); }
-            });
-
-            function addToCart(code) {
-                const product = products.find(p => p.code === code);
-                if (!product) return;
-
-                const existing = cart.find(item => item.code === code);
-                if (existing) {
-                    existing.quantity++;
-                } else {
-                    cart.push({...product, quantity: 1});
-                }
-                renderCart();
-                saveCart();
-                openCart();
-            }
-
-            function renderCart() {
-                if (cart.length === 0) {
-                    cartItemsUl.innerHTML = '<li>Your cart is empty</li>';
-                    document.getElementById("cartTotal").textContent = "Total: ₹0.00";
-                    invoiceDiv.innerHTML = '';
-                    return;
-                }
-
-                cartItemsUl.innerHTML = '';
-                let total = 0;
-
-                cart.forEach((item, index) => {
-                    total += item.price * item.quantity;
-
-                    const li = document.createElement('li');
-                    const itemInfo = document.createElement('span');
-                    itemInfo.textContent = `${item.name} - ₹${(item.price * item.quantity).toFixed(2)}`;
-
-                    const controls = document.createElement('div');
-                    controls.className = 'quantity-controls';
-
-                    const minusBtn = document.createElement('button');
-                    minusBtn.textContent = '−';
-                    minusBtn.className = 'qty-btn';
-                    minusBtn.onclick = () => updateQuantity(index, -1);
-
-                    const qty = document.createElement('span');
-                    qty.className = 'qty-display';
-                    qty.textContent = item.quantity;
-
-                    const plusBtn = document.createElement('button');
-                    plusBtn.textContent = '+';
-                    plusBtn.className = 'qty-btn';
-                    plusBtn.onclick = () => updateQuantity(index, 1);
-
-                    controls.appendChild(minusBtn);
-                    controls.appendChild(qty);
-                    controls.appendChild(plusBtn);
-
-                    const removeBtn = document.createElement('button');
-                    removeBtn.textContent = 'Remove';
-                    removeBtn.className = 'remove-btn';
-                    removeBtn.onclick = () => removeFromCart(index);
-
-                    li.appendChild(itemInfo);
-                    li.appendChild(controls);
-                    li.appendChild(removeBtn);
-
-                    cartItemsUl.appendChild(li);
-                });
-
-                document.getElementById("cartTotal").textContent = `Total: ₹${total.toFixed(2)}`;
-            }
-
-            function removeFromCart(index) {
-                if (index >= 0 && index < cart.length) {
-                    cart.splice(index, 1);
-                    renderCart();
-                    saveCart();
-                }
-            }
-
-            function updateQuantity(index, change) {
-                if (index >= 0 && index < cart.length) {
-                    cart[index].quantity += change;
-                    if (cart[index].quantity <= 0) {
-                        cart.splice(index, 1);
-                    }
-                    renderCart();
-                    saveCart();
-                }
-            }
-
-            function clearCart() {
-                if (cart.length === 0) {
-                    alert("Cart is already empty");
-                    return;
-                }
-                if (confirm("Are you sure you want to clear the cart?")) {
-                    cart.length = 0;
-                    renderCart();
-                    saveCart();
-                }
-            }
-
-            function openCart() {
-                cartSidebar.classList.add('open');
-            }
-
-            async function checkout() {
-                if (cart.length === 0) {
-                    alert("Your cart is empty");
-                    return;
-                }
-
-                window.location.href = "/customer_type";
-            }    
-            // Initial load
-            loadProducts();
-            renderCart();
-        </script>
-    </body>
-    </html>
-    """
-
+def sales_page(request: Request):
+    return templates.TemplateResponse("products.html", {"request": request})
 
 @app.get("/api/products")
 def api_products(db: Session = Depends(get_db)):
@@ -1968,99 +1610,9 @@ def delete_product(prod_id):
 
 # Sales Page
 @app.get("/sales", response_class=HTMLResponse)
-def sales_page():
-    return """
-    <html>
-    <head>
-        <title>Sales - Grocery Shop</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>
-            body { font-family: Arial, sans-serif; background: #f9fafb; margin: 0; padding: 20px; }
-            h1 { color: #1a7bbd; text-align: center; margin-bottom: 20px; }
-            table { border-collapse: collapse; width: 90%; max-width: 900px; margin: auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
-            th, td { padding: 14px 20px; text-align: left; border-bottom: 1px solid #eee; }
-            th { background-color: #1a7bbd; color: white; }
-            tr:hover { background-color: #f1f5fb; }
-            @media (max-width: 600px) {
-                table, thead, tbody, th, td, tr { display: block; }
-                th { position: sticky; top: 0; }
-                td { padding-left: 50%; position: relative; }
-                td::before { position: absolute; top: 14px; left: 14px; width: 45%; white-space: nowrap; font-weight: bold; }
-                td:nth-of-type(1)::before { content: "Product"; }
-                td:nth-of-type(2)::before { content: "Quantity"; }
-                td:nth-of-type(3)::before { content: "Total Price"; }
-                td:nth-of-type(4)::before { content: "Date"; }
-            }
-            .back-link {
-            display: inline-block;
-            margin: 15px 20px 10px;
-            padding: 8px 14px;
-            background-color: #8592b4;
-            color: white;
-            text-decoration: none;
-            font-weight: 600;
-            border-radius: 6px;
-            box-shadow: 0 2px 6px rgba(0, 123, 255, 0.4);
-            transition: background-color 0.3s ease, box-shadow 0.3s ease;
-        }
-        .back-link:hover {
-            background-color: #0056b3;
-            box-shadow: 0 4px 12px rgba(0, 86, 179, 0.6);
-            text-decoration: none;
-        }
-        </style>
-    </head>
-    <body>
-        <a href="/profile" class="back-link">&#8592; Back to Dashboard</a>
-
-        <h1>Sales History</h1>
-        <table id="salesTable">
-            <thead>
-                <tr>
-                    <th>Product</th>
-                    <th>Quantity</th>
-                    <th>Total Price ($)</th>
-                    <th>Date</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr><td colspan="4" style="text-align:center;">Loading sales...</td></tr>
-            </tbody>
-        </table>
-        <script>
-            async function loadSales() {
-                try {
-                    const token = localStorage.getItem("access_token");
-                    const resp = await fetch('/api/sales', {
-                        headers: { "Authorization": "Bearer " + token }
-                    });
-                    if (!resp.ok) throw new Error("Failed to fetch sales");
-                    const sales = await resp.json();
-
-                    const tbody = document.querySelector("#salesTable tbody");
-                    tbody.innerHTML = "";
-
-                    sales.forEach(sale => {
-                        const tr = document.createElement("tr");
-                        tr.innerHTML = `
-                            <td>${sale.product_name}</td>
-                            <td>${sale.quantity}</td>
-                            <td>${sale.total_price.toFixed(2)}</td>
-                            <td>${new Date(sale.sale_date).toLocaleString()}</td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                } catch (err) {
-                    console.error("Failed to load sales:", err);
-                    const tbody = document.querySelector("#salesTable tbody");
-                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: red;">Failed to load sales data. Please login.</td></tr>';
-                }
-            }
-            loadSales();
-        </script>
-    </body>
-    </html>
-    """
+def sales_page(request: Request):
+    return templates.TemplateResponse("sales.html", {"request": request})
+# In grocerybill.py - Replace the existing api_sales function
 
 @app.get("/api/sales")
 def api_sales(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -2367,6 +1919,7 @@ async def customer_type_page(request: Request):
 @app.get("/payment_method", response_class=HTMLResponse)
 async def payment_method_page(request: Request, total_amount: float = Query(...)):
     return templates.TemplateResponse("payment.html", {"request": request, "total_amount": total_amount})
+    
 
 @app.get("/invoice", response_class=HTMLResponse)
 async def invoice_page(request: Request, payment_method: str = Query(None)):
@@ -2380,10 +1933,14 @@ def generate_qr_code(qr_data: str):
     buf.seek(0)
     return Response(content=buf.getvalue(), media_type="image/png")
 
+@app.get("/barcode-generator", response_class=HTMLResponse)
+async def barcode_generator_page(request: Request):
+    return templates.TemplateResponse("barcode_generator.html", {"request": request})
+
 # -------------------------------------------------------------------
 # 9. Main execution block
 # -------------------------------------------------------------------
 if __name__ == "__main__":
     print("To run the application, use the command:")
-    print("python -muvicorn grocerybill:app --reload")
+    print("python -m uvicorn grocerybill:app --reload")
     uvicorn.run(app, host="127.0.0.1", port=8000)
