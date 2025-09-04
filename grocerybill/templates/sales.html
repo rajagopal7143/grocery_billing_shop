@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sales - Grocery Shop</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body { font-family: Arial, sans-serif; background: #f9fafb; margin: 0; padding: 20px; }
+        .header-container { max-width: 1000px; margin: 0 auto 20px auto; display: flex; justify-content: space-between; align-items: center; }
+        h1 { color: #1a7bbd; text-align: center; margin: 0; }
+        table { border-collapse: collapse; width: 100%; max-width: 1000px; margin: auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+        th, td { padding: 14px 20px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background-color: #1a7bbd; color: white; }
+        tr:hover { background-color: #f1f5fb; }
+        .back-link, #downloadCsvBtn {
+            display: inline-block;
+            padding: 8px 14px;
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            border-radius: 6px;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        .back-link { background-color: #8592b4; box-shadow: 0 2px 6px rgba(133, 146, 180, 0.4); }
+        .back-link:hover { background-color: #6c7a99; }
+        #downloadCsvBtn { background-color: #28a745; box-shadow: 0 2px 6px rgba(40, 167, 69, 0.4); }
+        #downloadCsvBtn:hover { background-color: #218838; }
+    </style>
+</head>
+<body>
+    <div class="header-container">
+        <a href="/profile" class="back-link">&#8592; Back to Dashboard</a>
+        <h1>Sales History</h1>
+        <button id="downloadCsvBtn">Download as CSV</button>
+    </div>
+    
+    <table id="salesTable">
+        <thead>
+            <tr>
+                <th>Invoice #</th>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Total Price (₹)</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="6" style="text-align:center;">Loading sales...</td></tr>
+        </tbody>
+    </table>
+
+    <script>
+    let salesData = []; // Store data globally for CSV export
+
+    async function loadSales() {
+        const token = localStorage.getItem("access_token");
+        if (!token) {
+            // Redirect to login if no token is found
+            window.location.href = "/login";
+            return;
+        }
+
+        try {
+            const resp = await fetch('/api/sales', {
+                headers: { "Authorization": "Bearer " + token }
+            });
+            if (resp.status === 401) {
+                // Token expired or invalid → clear storage and redirect
+                localStorage.removeItem("access_token");
+                alert("Session expired. Please login again.");
+                window.location.href = "/login";
+                return;
+            }
+
+            if (!resp.ok) throw new Error("Failed to fetch sales");
+            salesData = await resp.json();
+
+            const tbody = document.querySelector("#salesTable tbody");
+            tbody.innerHTML = "";
+
+            if (salesData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No sales recorded yet.</td></tr>';
+                return;
+            }
+
+            salesData.forEach(sale => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>${sale.invoice_number || 'N/A'}</td>
+                    <td>${sale.product_name}</td>
+                    <td>${sale.quantity}</td>
+                    <td>${sale.total_price.toFixed(2)}</td>
+                    <td>${new Date(sale.sale_date).toLocaleString()}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (err) {
+            console.error("Failed to load sales:", err);
+            const tbody = document.querySelector("#salesTable tbody");
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: red;">Failed to load sales data.</td></tr>';
+        }
+    }
+
+    function downloadCSV() {
+        if (salesData.length === 0) {
+            alert("No sales data to download.");
+            return;
+        }
+        const headers = ["InvoiceNumber", "CustomerName", "ProductName", "Quantity", "TotalPrice", "PaymentMethod", "Date"];
+        const csvRows = [
+            headers.join(','),
+            ...salesData.map(row => [
+                row.invoice_number,
+                `"${row.customer_name.replace(/"/g, '""')}"`,
+                `"${row.product_name.replace(/"/g, '""')}"`,
+                row.quantity,
+                row.total_price.toFixed(2),
+                row.payment_method,
+                new Date(row.sale_date).toLocaleString()
+            ].join(','))
+        ];
+        
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `sales_report_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+    
+    document.getElementById('downloadCsvBtn').addEventListener('click', downloadCSV);
+    loadSales();
+</script>
+
+</body>
+</html>
