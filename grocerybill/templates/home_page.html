@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Fresh Grocery Shop</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <style>
+            body {
+                margin: 0;
+                min-height: 100vh;
+                font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+                background: linear-gradient(120deg, #f0354e 0%, #6f82a6 100%);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            .centerbox {
+                background: rgba(255,255,255,0.95);
+                border-radius: 20px;
+                box-shadow: 0 6px 32px rgba(44, 108, 70, 0.09);
+                text-align: center;
+                padding: 54px 36px 38px 36px;
+                max-width: 420px;
+                width: 95%;
+                animation: floatIn 1.3s cubic-bezier(.31,.57,.54,.99);
+            }
+            @keyframes floatIn {
+                from { transform: translateY(-30px) scale(0.94); opacity: 0; }
+                to { transform: translateY(0) scale(1); opacity: 1; }
+            }
+            .headline {
+                font-size: 2.5em;
+                font-weight: 700;
+                color: #199660;
+                margin-bottom: 16px;
+                line-height: 1.2;
+                letter-spacing: 1px;
+            }
+            .subtext {
+                color: #222;
+                font-size: 1.14em;
+                margin-bottom: 34px;
+                font-weight: 400;
+                opacity: 0.9;
+            }
+            .anim {
+                width: 130px;
+                margin: 10px auto 30px auto;
+                animation: float 2.8s ease-in-out infinite alternate;
+                display: block;
+            }
+            @keyframes float {
+                from { transform: translateY(0); }
+                to { transform: translateY(-22px); }
+            }
+            .button-row {
+                display: flex;
+                justify-content: center;
+                gap: 22px;
+                margin-top: 14px;
+            }
+            .bbtn {
+                background: linear-gradient(90deg, #34e89e 0%, #0fbe69 100%);
+                color: white;
+                border: none;
+                outline: none;
+                font-weight: 600;
+                font-size: 1.17em;
+                border-radius: 8px;
+                padding: 12px 38px;
+                cursor: pointer;
+                box-shadow: 0 4px 19px rgba(44, 108, 70, 0.11);
+                text-decoration: none;
+                letter-spacing: 0.2px;
+                transition: background 0.3s, transform 0.16s;
+                position: relative;
+                overflow: hidden;
+            }
+            .bbtn:hover {
+                background: linear-gradient(92deg, #22a86b 0%, #23c386 100%);
+                transform: translateY(-2px) scale(1.04);
+            }
+            @media (max-width: 600px) {
+                .centerbox { padding: 27px 5vw 26px 5vw;}
+                .headline { font-size: 1.5em; }
+                .subtext { font-size: 1em; }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="centerbox">
+            <svg class="anim" viewBox="0 0 140 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <ellipse cx="70" cy="80" rx="56" ry="9" fill="#e6f9ee" />
+                <circle cx="70" cy="42" r="36" fill="#43e19c" fill-opacity="0.8"/>
+                <ellipse cx="70" cy="46" rx="32" ry="12" fill="white" fill-opacity="0.8"/>
+                <ellipse cx="70" cy="35" rx="18" ry="8" fill="#31ca85" />
+            </svg>
+            <div class="headline">Welcome to Fresh Grocery Shop</div>
+            <div class="subtext">Your one-stop destination for farm-fresh products, delivered fast and affordably.</div>
+            <div class="button-row">
+                <a class="bbtn" href="/register">Register</a>
+                <a class="bbtn" href="/login">Login</a>
+            </div>
+        </div>
+    </body>
+    </html>

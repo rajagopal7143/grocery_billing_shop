@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Invoice Details</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f9fafb; color: #333; }
+        .container { max-width: 800px; margin: auto; background: #fff; padding: 24px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.1); }
+        h1 { color: #1a7bbd; margin-bottom: 0; }
+        .invoice-header { margin-bottom: 24px; }
+        .info { margin-bottom: 16px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 12px;}
+        th, td { padding: 12px 14px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background-color: #1a7bbd; color: white; }
+        tfoot td { font-weight: bold; font-size: 1.1em; }
+        .total-row { background-color: #f0f4f8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="invoice-header">
+            <h1>Invoice #: <span id="invoiceNumber">INV-123456</span></h1>
+            <div class="info">
+                <strong>Date:</strong> <span id="invoiceDate">2025-09-05</span><br />
+                <strong>Customer:</strong> <span id="customerName">John Doe</span><br />
+                <strong>Email:</strong> <span id="customerEmail">john@example.com</span><br />
+                <strong>Phone:</strong> <span id="customerPhone">+91 9876543210</span>
+            </div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Unit Price (₹)</th>
+                    <th>Quantity</th>
+                    <th>Total Price (₹)</th>
+                </tr>
+            </thead>
+            <tbody id="invoiceItems">
+                <!-- Rows inserted by JS or server-side rendering -->
+                <tr>
+                    <td>Product A</td>
+                    <td>₹100.00</td>
+                    <td>2</td>
+                    <td>₹200.00</td>
+                </tr>
+                <tr>
+                    <td>Product B</td>
+                    <td>₹150.00</td>
+                    <td>1</td>
+                    <td>₹150.00</td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td colspan="3" style="text-align:right;">Grand Total</td>
+                    <td>₹350.00</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</body>
+</html>

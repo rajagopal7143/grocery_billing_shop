@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Manage Product</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+            body { font-family: 'Segoe UI', sans-serif; background-color: #f4f7f8; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+            .container { background: white; padding: 2.5rem 3rem; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 450px; width: 100%; }
+            h2 { text-align: center; margin-bottom: 1.8rem; color: #333; }
+            label { font-weight: 600; display: block; margin-top: 1.2rem; color: #555; }
+            input[type="text"], input[type="number"] { width: 100%; padding: 0.7rem 1rem; border: 1.6px solid #ddd; border-radius: 6px; margin-top: 0.4rem; transition: border-color 0.3s ease; font-size: 1rem; box-sizing: border-box; }
+            input:focus { border-color: #28a745; outline: none; box-shadow: 0 0 6px #28a745aa; }
+            input:read-only { background-color: #e9ecef; cursor: not-allowed; }
+            button { margin-top: 2rem; width: 100%; padding: 0.85rem; font-size: 1.1rem; font-weight: 600; color: white; background-color: #28a745; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 5px 15px #28a745aa; transition: background-color 0.3s ease, box-shadow 0.3s ease; }
+            button:hover { background-color: #218838; box-shadow: 0 6px 18px #218838cc; }
+            button:disabled { background-color: #aaa; cursor: not-allowed; }
+            .back-link { display: block; text-align: center; margin-top: 1.5rem; color: #28a745; font-weight: 600; text-decoration: none; font-size: 0.95rem; }
+            .back-link:hover { text-decoration: underline; }
+            #message { text-align: center; margin-top: 15px; font-weight: bold; min-height: 22px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2 id="form-title">Add New Product</h2>
+            <form id="productForm" autocomplete="off">
+                <label for="code">Product Code</label>
+                <input id="code" type="text" name="code" maxlength="10" required placeholder="e.g., PRD001" />
+                
+                <label for="category">Category</label>
+                <input id="category" type="text" name="category" maxlength="50" required placeholder="e.g., Fruits" />
+                
+                <label for="name">Product Name</label>
+                <input id="name" type="text" name="name" maxlength="100" required placeholder="e.g., Fresh Apple" />
+                
+                <label for="image_url">Image URL</label>
+                <input id="image_url" type="text" name="image_url" maxlength="250" required placeholder="https://example.com/image.jpg" />
+                
+                <label for="price">Price (₹)</label>
+                <input id="price" type="number" step="0.01" min="0" name="price" required placeholder="e.g., 1.99" />
+                
+                <button type="submit" id="submit-btn">Add Product</button>
+            </form>
+            <div id="message"></div>
+            <a class="back-link" href="/products">&#8592; Back to Product Catalog</a>
+        </div>
+        <script>
+            const form = document.getElementById('productForm');
+            const messageDiv = document.getElementById('message');
+            const title = document.getElementById('form-title');
+            const submitBtn = document.getElementById('submit-btn');
+            const codeInput = document.getElementById('code');
+
+            let editMode = false;
+            let productCode = null;
+
+            document.addEventListener('DOMContentLoaded', async () => {
+                const path = window.location.pathname;
+                if (path.startsWith('/products/edit/')) {
+                    const parts = path.split('/');
+                    productCode = parts[parts.length - 1];
+                    if(productCode) {
+                        editMode = true;
+                        await loadProductData(productCode);
+                    }
+                }
+            });
+
+            async function loadProductData(code) {
+                title.textContent = 'Edit Product';
+                submitBtn.textContent = 'Update Product';
+
+                // 1. Get the token from local storage
+                const token = localStorage.getItem("access_token");
+                if (!token) {
+                    messageDiv.style.color = 'red';
+                    messageDiv.textContent = "Authentication error. Please login.";
+                    submitBtn.disabled = true;
+                    return;
+                }
+
+            try {
+                // 2. Add the token to the fetch request headers
+                const response = await fetch(`/api/products/${code}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.status === 401) {
+                    throw new Error('Unauthorized. Your session may have expired.');
+                }
+                if (!response.ok) {
+                    throw new Error('Product not found.');
+                }
+                
+                const product = await response.json();
+                
+                codeInput.value = product.code;
+                codeInput.readOnly = true;
+                document.getElementById('category').value = product.category;
+                document.getElementById('name').value = product.name;
+                document.getElementById('image_url').value = product.image_url;
+                document.getElementById('price').value = product.price;
+            } catch (err) {
+                messageDiv.style.color = 'red';
+                messageDiv.textContent = `Error: ${err.message}`;
+                submitBtn.disabled = true;
+            }
+        }
+ 
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                messageDiv.textContent = 'Submitting...';
+                
+                const token = localStorage.getItem("access_token");
+                if (!token) {
+                    messageDiv.style.color = 'red';
+                    messageDiv.textContent = "Authentication error. Please login.";
+                    return;
+                }
+
+                const formData = new FormData(form);
+                const data = Object.fromEntries(formData.entries());
+                data.price = parseFloat(data.price);
+
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                };
+
+                let url = '/api/products/add';
+                let method = 'POST';
+                if (editMode) {
+                    url = `/api/products/edit/${productCode}`;
+                    method = 'PUT';
+                }
+
+                try {
+                    const response = await fetch(url, { method, headers, body: JSON.stringify(data) });
+                    const result = await response.json();
+                    if (response.ok) {
+                        messageDiv.style.color = 'green';
+                        messageDiv.textContent = result.message;
+                        if (!editMode) form.reset();
+                    } else {
+                        messageDiv.style.color = 'red';
+                        messageDiv.textContent = `Error: ${result.detail}`;
+                    }
+                } catch (err) {
+                    messageDiv.style.color = 'red';
+                    messageDiv.textContent = 'An unexpected error occurred.';
+                }
+            });
+        </script>
+    </body>
+    </html>
