@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Dashboard - Fresh Grocery Shop</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                font-family: 'Inter', sans-serif;
+                background: #f0f5f9;
+                color: #333;
+                display: flex;
+                min-height: 100vh;
+                overflow-x: hidden;
+            }
+            nav.sidebar {
+                width: 260px;
+                background: #1a7bbd;
+                color: white;
+                display: flex;
+                flex-direction: column;
+                padding: 20px;
+                position: fixed;
+                height: 100vh;
+                left: 0;
+                top: 0;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.15);
+                transition: width 0.3s ease;
+            }
+            nav.sidebar h2 {
+                font-weight: 700;
+                font-size: 1.5em;
+                margin-bottom: 40px;
+                text-align: center;
+                letter-spacing: 1.2px;
+                text-transform: uppercase;
+                user-select: none;
+            }
+            nav.sidebar a {
+                color: white;
+                text-decoration: none;
+                padding: 12px 20px;
+                border-radius: 8px;
+                margin-bottom: 14px;
+                display: block;
+                font-weight: 600;
+                transition: background-color 0.3s ease;
+                user-select: none;
+                outline-offset: 2px;
+            }
+            nav.sidebar a:focus {
+                outline: 2px solid #f0f5f9;
+                outline-offset: 3px;
+            }
+            nav.sidebar a:hover {
+                background-color: #155c9a;
+            }
+            nav.sidebar a.logout {
+                margin-top: auto;
+                background: #d32f2f;
+                font-weight: 700;
+            }
+            nav.sidebar a.logout:hover,
+            nav.sidebar a.logout:focus {
+                background: #b02727;
+            }
+            main.content {
+                margin-left: 260px;
+                flex-grow: 1;
+                padding: 24px 40px;
+                background: #f0f5f9;
+                min-height: 100vh;
+                animation: fadeInContent 0.7s ease forwards;
+                overflow-y: auto;
+                outline-offset: 4px;
+            }
+            main.content:focus {
+                outline: 3px solid #1a7bbd;
+            }
+            @keyframes fadeInContent {
+                from { opacity: 0; transform: translateY(20px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            main.content h1 {
+                font-weight: 700;
+                color: #1a7bbd;
+                margin-bottom: 20px;
+                user-select: none;
+            }
+            .cards-container {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+                gap: 28px;
+            }
+            .card {
+                background: white;
+                border-radius: 14px;
+                padding: 30px 25px;
+                box-shadow: 0 8px 20px rgba(26, 83, 163, 0.1);
+                transition: box-shadow 0.3s ease, transform 0.25s ease;
+                cursor: default;
+                user-select: none;
+                position: relative;
+                overflow: hidden;
+                outline-offset: 4px;
+            }
+            .card:focus {
+                outline: 3px solid #1a7bbd;
+            }
+            .card:hover {
+                transform: translateY(-8px);
+                box-shadow: 0 14px 40px rgba(26, 83, 163, 0.16);
+            }
+            .card h3 {
+                font-weight: 700;
+                margin: 0 0 15px 0;
+                font-size: 1.25em;
+                color: #155c9a;
+            }
+            .card .stat {
+                font-size: 2.8em;
+                font-weight: 700;
+                color: #1a7bbd;
+                letter-spacing: 0.05em;
+                line-height: 1;
+            }
+            .icon {
+                position: absolute;
+                top: -20px;
+                right: -20px;
+                width: 80px;
+                height: 80px;
+                opacity: 0.1;
+                user-select: none;
+                pointer-events: none;
+            }
+            .card:nth-child(1) {
+                animation: floatUpDown 3.3s ease-in-out infinite;
+            }
+            .card:nth-child(2) {
+                animation: floatUpDown 3.5s ease-in-out infinite;
+                animation-delay: 0.2s;
+            }
+            .card:nth-child(3) {
+                animation: floatUpDown 3.7s ease-in-out infinite;
+                animation-delay: 0.4s;
+            }
+            @keyframes floatUpDown {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-10px); }
+            }
+            @media (max-width: 720px) {
+                nav.sidebar {
+                    width: 60px;
+                    padding: 15px;
+                }
+                nav.sidebar h2 {
+                    display: none;
+                }
+                nav.sidebar a {
+                    font-size: 0;
+                    padding: 10px;
+                    margin-bottom: 18px;
+                }
+                nav.sidebar a.logout {
+                    margin-top: 24px;
+                }
+                main.content {
+                    margin-left: 60px;
+                    padding: 20px 20px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <nav class="sidebar" aria-label="Main Navigation">
+            <h2>Grocery Shop</h2>
+            <a href="/dashboard" tabindex="0">Dashboard</a>
+            <a href="/products" tabindex="0">Products</a>
+            <a href="/products/add" tabindex="0">Add Product</a>
+            <a href="/sales" tabindex="0">Sales</a>
+            <a href="/customers" tabindex="0">Customers details</a>
+            <a href="/customers/add" tabindex="0">Add Customer</a>
+            <a href="/barcode-generator" tabindex="0">Barcode Generator</a>
+            <a href="#" class="logout" onclick="logout()" tabindex="0">Logout</a>
+        </nav>
+        <main class="content" tabindex="0" role="main" aria-live="polite" aria-atomic="true">
+            <div class="welcome-container" style="max-width: 700px; margin: 0 auto 40px auto; text-align: center; padding: 20px 15px; background: white; border-radius: 14px; box-shadow: 0 8px 25px rgba(26, 83, 163, 0.15);">
+                <h1 id="welcomeMessage" style="font-size: 2.8em; color: #155c9a; font-weight: 800; margin-bottom: 12px; user-select: none; letter-spacing: 0.05em;">
+                    Loading profile...
+                </h1>
+                <p style="font-size: 1.3em; color: #2c3e50; margin-bottom: 12px; font-weight: 600;">
+                    Freshness Delivered to Your Doorstep!
+                </p>
+                <p style="font-size: 1.1em; color: #455a64; line-height: 1.5; margin-bottom: 0;">
+                    Explore our wide selection of quality groceries and unbeatable deals. Shop now and experience convenience and freshness like never before!
+                </p>
+            </div>
+            <div class="cards-container" aria-label="User stats and info">
+                <!-- Existing cards here -->
+            </div>
+        </main>
+
+        <script>
+            async function loadProfile() {
+                const token = localStorage.getItem("access_token");
+                if (!token) {
+                    alert("Not logged in, please login.");
+                    window.location.href = "/login";
+                    return;
+                }
+                try {
+                    const response = await fetch("/profile/user", {
+                        headers: {
+                            "Authorization": "Bearer " + token
+                        }
+                    });
+                    if (!response.ok) {
+                        throw new Error("Not authenticated");
+                    }
+                    const data = await response.json();
+                    document.getElementById("welcomeMessage").innerText = `Welcome, ${data.username}!`;
+                } catch (error) {
+                    alert("Session expired or unauthorized. Please login again.");
+                    localStorage.removeItem("access_token");
+                    window.location.href = "/login";
+                }
+            }
+            window.onload = loadProfile;
+                        // In your login page's <script> tag...
+            async function handleLogin(event) {
+                event.preventDefault();
+                // ... code to get username and password
+                
+                const response = await fetch("/token", { /* ... login request details ... */ });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem("access_token", data.access_token);
+                    // Change the destination to the dashboard
+                    window.location.href = "/dashboard"; 
+                } else {
+                    // ... handle login error
+                }
+            }
+
+            function logout() {
+                localStorage.removeItem("access_token");
+                window.location.href = "/";
+            }
+        </script>
+    </body>
+    </html>
